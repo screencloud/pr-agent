@@ -12,7 +12,6 @@ global_settings = Dynaconf(
     envvar_prefix=False,
     merge_enabled=True,
     settings_files=[join(current_dir, f) for f in [
-        "settings/.secrets.toml",
         "settings/configuration.toml",
         "settings/ignore.toml",
         "settings/language_extensions.toml",
@@ -20,20 +19,22 @@ global_settings = Dynaconf(
         "settings/pr_questions_prompts.toml",
         "settings/pr_line_questions_prompts.toml",
         "settings/pr_description_prompts.toml",
-        "settings/pr_code_suggestions_prompts.toml",
-        "settings/pr_code_suggestions_reflect_prompts.toml",
-        "settings/pr_sort_code_suggestions_prompts.toml",
+        "settings/code_suggestions/pr_code_suggestions_prompts.toml",
+        "settings/code_suggestions/pr_code_suggestions_prompts_not_decoupled.toml",
+        "settings/code_suggestions/pr_code_suggestions_reflect_prompts.toml",
         "settings/pr_information_from_user_prompts.toml",
         "settings/pr_update_changelog_prompts.toml",
         "settings/pr_custom_labels.toml",
         "settings/pr_add_docs.toml",
+        "settings/custom_labels.toml",
+        "settings/pr_help_prompts.toml",
+        "settings/.secrets.toml",
         "settings_prod/.secrets.toml",
-        "settings/custom_labels.toml"
     ]]
 )
 
 
-def get_settings():
+def get_settings(use_context=False):
     """
     Retrieves the current settings.
 

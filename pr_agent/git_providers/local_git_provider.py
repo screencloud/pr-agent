@@ -4,9 +4,9 @@ from typing import List
 
 from git import Repo
 
+from pr_agent.algo.types import EDIT_TYPE, FilePatchInfo
 from pr_agent.config_loader import _find_repository_root, get_settings
 from pr_agent.git_providers.git_provider import GitProvider
-from pr_agent.algo.types import EDIT_TYPE, FilePatchInfo
 from pr_agent.log import get_logger
 
 
@@ -139,6 +139,18 @@ class LocalGitProvider(GitProvider):
         pass  # Not applicable to the local git provider, but required by the interface
 
     def remove_comment(self, comment):
+        pass  # Not applicable to the local git provider, but required by the interface
+
+    def add_eyes_reaction(self, comment):
+        pass  # Not applicable to the local git provider, but required by the interface
+
+    def get_commit_messages(self):
+        pass  # Not applicable to the local git provider, but required by the interface
+
+    def get_repo_settings(self):
+        pass  # Not applicable to the local git provider, but required by the interface
+
+    def remove_reaction(self, comment):
         pass  # Not applicable to the local git provider, but required by the interface
 
     def get_languages(self):

@@ -9,9 +9,9 @@ import secrets
 from urllib.parse import unquote
 
 import uvicorn
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette import status
 from starlette.background import BackgroundTasks
 from starlette.middleware import Middleware
@@ -23,9 +23,6 @@ from pr_agent.agent.pr_agent import PRAgent, command2class
 from pr_agent.algo.utils import update_settings_from_args
 from pr_agent.config_loader import get_settings
 from pr_agent.git_providers.utils import apply_repo_settings
-from pr_agent.log import get_logger
-from fastapi import Request, Depends
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pr_agent.log import LoggingFormat, get_logger, setup_logger
 
 setup_logger(fmt=LoggingFormat.JSON, level="DEBUG")
@@ -36,20 +33,16 @@ azure_devops_server = get_settings().get("azure_devops_server")
 WEBHOOK_USERNAME = azure_devops_server.get("webhook_username")
 WEBHOOK_PASSWORD = azure_devops_server.get("webhook_password")
 
-def handle_request(
-    background_tasks: BackgroundTasks, url: str, body: str, log_context: dict
+async def handle_request_comment( url: str, body: str, log_context: dict
 ):
     log_context["action"] = body
     log_context["api_url"] = url
 
-    async def inner():
-        try:
-            with get_logger().contextualize(**log_context):
-                await PRAgent().handle_request(url, body)
-        except Exception as e:
-            get_logger().error(f"Failed to handle webhook: {e}")
-
-    background_tasks.add_task(inner)
+    try:
+        with get_logger().contextualize(**log_context):
+            await PRAgent().handle_request(url, body)
+    except Exception as e:
+        get_logger().exception(f"Failed to handle webhook", artifact={"url": url, "body": body}, error=str(e))
 
 
 # currently only basic auth is supported with azure webhooks
@@ -67,7 +60,14 @@ def authorize(credentials: HTTPBasicCredentials = Depends(security)):
 
 async def _perform_commands_azure(commands_conf: str, agent: PRAgent, api_url: str, log_context: dict):
     apply_repo_settings(api_url)
+    if commands_conf == "pr_commands" and get_settings().config.disable_auto_feedback:  # auto commands for PR, and auto feedback is disabled
+        get_logger().info(f"Auto feedback is disabled, skipping auto commands for PR {api_url=}", **log_context)
+        return
     commands = get_settings().get(f"azure_devops_server.{commands_conf}")
+    if not commands:
+        return
+
+    get_settings().set("config.is_auto_command", True)
     for command in commands:
         try:
             split_command = command.split(" ")
@@ -82,12 +82,7 @@ async def _perform_commands_azure(commands_conf: str, agent: PRAgent, api_url: s
             get_logger().error(f"Failed to perform command {command}: {e}")
 
 
-@router.post("/", dependencies=[Depends(authorize)])
-async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
-    log_context = {"server_type": "azure_devops_server"}
-    data = await request.json()
-    get_logger().info(json.dumps(data))
-
+async def handle_request_azure(data, log_context):
     actions = []
     if data["eventType"] == "git.pullrequest.created":
         # API V1 (latest)
@@ -95,7 +90,10 @@ async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
         log_context["event"] = data["eventType"]
         log_context["api_url"] = pr_url
         await _perform_commands_azure("pr_commands", PRAgent(), pr_url, log_context)
-        return
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content=jsonable_encoder({"message": "webhook triggered successfully"})
+        )
     elif data["eventType"] == "ms.vss-code.git-pullrequest-comment-event" and "content" in data["resource"]["comment"]:
         if available_commands_rgx.match(data["resource"]["comment"]["content"]):
             if(data["resourceVersion"] == "2.0"):
@@ -123,13 +121,25 @@ async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
 
     for action in actions:
         try:
-            handle_request(background_tasks, pr_url, action, log_context)
+            await handle_request_comment(pr_url, action, log_context)
         except Exception as e:
             get_logger().error("Azure DevOps Trigger failed. Error:" + str(e))
             return JSONResponse(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 content=json.dumps({"message": "Internal server error"}),
             )
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder({"message": "webhook triggered successfully"})
+    )
+
+@router.post("/", dependencies=[Depends(authorize)])
+async def handle_webhook(background_tasks: BackgroundTasks, request: Request):
+    log_context = {"server_type": "azure_devops_server"}
+    data = await request.json()
+    # get_logger().info(json.dumps(data))
+
+    background_tasks.add_task(handle_request_azure, data, log_context)
+
     return JSONResponse(
         status_code=status.HTTP_202_ACCEPTED, content=jsonable_encoder({"message": "webhook triggered successfully"})
     )

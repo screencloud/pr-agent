@@ -1,21 +1,27 @@
+import difflib
+import re
+
+from packaging.version import parse as parse_version
 from typing import Optional, Tuple
 from urllib.parse import quote_plus, urlparse
 
-from requests.exceptions import HTTPError
 from atlassian.bitbucket import Bitbucket
-from starlette_context import context
+from requests.exceptions import HTTPError
 
-from .git_provider import GitProvider
-from ..algo.types import EDIT_TYPE, FilePatchInfo
+from ..algo.git_patch_processing import decode_if_bytes
 from ..algo.language_handler import is_valid_file
-from ..algo.utils import load_large_diff, find_line_number_of_relevant_line_in_file
+from ..algo.types import EDIT_TYPE, FilePatchInfo
+from ..algo.utils import (find_line_number_of_relevant_line_in_file,
+                          load_large_diff)
 from ..config_loader import get_settings
 from ..log import get_logger
+from .git_provider import GitProvider
 
 
 class BitbucketServerProvider(GitProvider):
     def __init__(
-            self, pr_url: Optional[str] = None, incremental: Optional[bool] = False
+            self, pr_url: Optional[str] = None, incremental: Optional[bool] = False,
+            bitbucket_client: Optional[Bitbucket] = None,
     ):
         self.bitbucket_server_url = None
         self.workspace_slug = None
@@ -30,8 +36,13 @@ class BitbucketServerProvider(GitProvider):
         self.bitbucket_pull_request_api_url = pr_url
 
         self.bitbucket_server_url = self._parse_bitbucket_server(url=pr_url)
-        self.bitbucket_client = Bitbucket(url=self.bitbucket_server_url,
-                                          token=get_settings().get("BITBUCKET_SERVER.BEARER_TOKEN", None))
+        self.bitbucket_client = bitbucket_client or Bitbucket(url=self.bitbucket_server_url,
+                                                              token=get_settings().get("BITBUCKET_SERVER.BEARER_TOKEN",
+                                                                                       None))
+        try:
+            self.bitbucket_api_version = parse_version(self.bitbucket_client.get("rest/api/1.0/application-properties").get('version'))
+        except Exception:
+            self.bitbucket_api_version = None
 
         if pr_url:
             self.set_pr(pr_url)
@@ -59,24 +70,37 @@ class BitbucketServerProvider(GitProvider):
         post_parameters_list = []
         for suggestion in code_suggestions:
             body = suggestion["body"]
+            original_suggestion = suggestion.get('original_suggestion', None)  # needed for diff code
+            if original_suggestion:
+                try:
+                    existing_code = original_suggestion['existing_code'].rstrip() + "\n"
+                    improved_code = original_suggestion['improved_code'].rstrip() + "\n"
+                    diff = difflib.unified_diff(existing_code.split('\n'),
+                                                improved_code.split('\n'), n=999)
+                    patch_orig = "\n".join(diff)
+                    patch = "\n".join(patch_orig.splitlines()[5:]).strip('\n')
+                    diff_code = f"\n\n```diff\n{patch.rstrip()}\n```"
+                    # replace ```suggestion ... ``` with diff_code, using regex:
+                    body = re.sub(r'```suggestion.*?```', diff_code, body, flags=re.DOTALL)
+                except Exception as e:
+                    get_logger().exception(f"Bitbucket failed to get diff code for publishing, error: {e}")
+                    continue
             relevant_file = suggestion["relevant_file"]
             relevant_lines_start = suggestion["relevant_lines_start"]
             relevant_lines_end = suggestion["relevant_lines_end"]
 
             if not relevant_lines_start or relevant_lines_start == -1:
-                if get_settings().config.verbosity_level >= 2:
-                    get_logger().exception(
-                        f"Failed to publish code suggestion, relevant_lines_start is {relevant_lines_start}"
-                    )
+                get_logger().warning(
+                    f"Failed to publish code suggestion, relevant_lines_start is {relevant_lines_start}"
+                )
                 continue
 
             if relevant_lines_end < relevant_lines_start:
-                if get_settings().config.verbosity_level >= 2:
-                    get_logger().exception(
-                        f"Failed to publish code suggestion, "
-                        f"relevant_lines_end is {relevant_lines_end} and "
-                        f"relevant_lines_start is {relevant_lines_start}"
-                    )
+                get_logger().warning(
+                    f"Failed to publish code suggestion, "
+                    f"relevant_lines_end is {relevant_lines_end} and "
+                    f"relevant_lines_start is {relevant_lines_start}"
+                )
                 continue
 
             if relevant_lines_end > relevant_lines_start:
@@ -134,12 +158,50 @@ class BitbucketServerProvider(GitProvider):
         diffstat = [change["path"]['toString'] for change in changes]
         return diffstat
 
+    #gets the best common ancestor: https://git-scm.com/docs/git-merge-base
+    @staticmethod
+    def get_best_common_ancestor(source_commits_list, destination_commits_list, guaranteed_common_ancestor) -> str:
+        destination_commit_hashes = {commit['id'] for commit in destination_commits_list} | {guaranteed_common_ancestor}
+
+        for commit in source_commits_list:
+            for parent_commit in commit['parents']:
+                if parent_commit['id'] in destination_commit_hashes:
+                    return parent_commit['id']
+
+        return guaranteed_common_ancestor
+
     def get_diff_files(self) -> list[FilePatchInfo]:
         if self.diff_files:
             return self.diff_files
 
-        base_sha = self.pr.toRef['latestCommit']
         head_sha = self.pr.fromRef['latestCommit']
+
+        # if Bitbucket api version is >= 8.16 then use the merge-base api for 2-way diff calculation
+        if self.bitbucket_api_version is not None and self.bitbucket_api_version >= parse_version("8.16"):
+            try:
+                base_sha = self.bitbucket_client.get(self._get_merge_base())['id']
+            except Exception as e:
+                get_logger().error(f"Failed to get the best common ancestor for PR: {self.pr_url}, \nerror: {e}")
+                raise e
+        else:
+            source_commits_list = list(self.bitbucket_client.get_pull_requests_commits(
+                self.workspace_slug,
+                self.repo_slug,
+                self.pr_num
+            ))
+            # if Bitbucket api version is None or < 7.0 then do a simple diff with a guaranteed common ancestor
+            base_sha = source_commits_list[-1]['parents'][0]['id']
+            # if Bitbucket api version is 7.0-8.15 then use 2-way diff functionality for the base_sha
+            if self.bitbucket_api_version is not None and self.bitbucket_api_version >= parse_version("7.0"):
+                try:
+                    destination_commits = list(
+                        self.bitbucket_client.get_commits(self.workspace_slug, self.repo_slug, base_sha,
+                                                          self.pr.toRef['latestCommit']))
+                    base_sha = self.get_best_common_ancestor(source_commits_list, destination_commits, base_sha)
+                except Exception as e:
+                    get_logger().error(
+                        f"Failed to get the commit list for calculating best common ancestor for PR: {self.pr_url}, \nerror: {e}")
+                    raise e
 
         diff_files = []
         original_file_content_str = ""
@@ -156,27 +218,23 @@ class BitbucketServerProvider(GitProvider):
                 case 'ADD':
                     edit_type = EDIT_TYPE.ADDED
                     new_file_content_str = self.get_file(file_path, head_sha)
-                    if isinstance(new_file_content_str, (bytes, bytearray)):
-                        new_file_content_str = new_file_content_str.decode("utf-8")
+                    new_file_content_str = decode_if_bytes(new_file_content_str)
                     original_file_content_str = ""
                 case 'DELETE':
                     edit_type = EDIT_TYPE.DELETED
                     new_file_content_str = ""
                     original_file_content_str = self.get_file(file_path, base_sha)
-                    if isinstance(original_file_content_str, (bytes, bytearray)):
-                        original_file_content_str = original_file_content_str.decode("utf-8")
+                    original_file_content_str = decode_if_bytes(original_file_content_str)
                 case 'RENAME':
                     edit_type = EDIT_TYPE.RENAMED
                 case _:
                     edit_type = EDIT_TYPE.MODIFIED
                     original_file_content_str = self.get_file(file_path, base_sha)
-                    if isinstance(original_file_content_str, (bytes, bytearray)):
-                        original_file_content_str = original_file_content_str.decode("utf-8")
+                    original_file_content_str = decode_if_bytes(original_file_content_str)
                     new_file_content_str = self.get_file(file_path, head_sha)
-                    if isinstance(new_file_content_str, (bytes, bytearray)):
-                        new_file_content_str = new_file_content_str.decode("utf-8")
+                    new_file_content_str = decode_if_bytes(new_file_content_str)
 
-            patch = load_large_diff(file_path, new_file_content_str, original_file_content_str)
+            patch = load_large_diff(file_path, new_file_content_str, original_file_content_str, show_warning=False)
 
             diff_files.append(
                 FilePatchInfo(
@@ -285,10 +343,10 @@ class BitbucketServerProvider(GitProvider):
         for comment in comments:
             if 'position' in comment:
                 self.publish_inline_comment(comment['body'], comment['position'], comment['path'])
-            elif 'start_line' in comment:  # multi-line comment
+            elif 'start_line' in comment: # multi-line comment
                 # note that bitbucket does not seem to support range - only a comment on a single line - https://community.developer.atlassian.com/t/api-post-endpoint-for-inline-pull-request-comments/60452
                 self.publish_inline_comment(comment['body'], comment['start_line'], comment['path'])
-            elif 'line' in comment:  # single-line comment
+            elif 'line' in comment: # single-line comment
                 self.publish_inline_comment(comment['body'], comment['line'], comment['path'])
             else:
                 get_logger().error(f"Could not publish inline comment: {comment}")
@@ -344,10 +402,21 @@ class BitbucketServerProvider(GitProvider):
 
         try:
             projects_index = path_parts.index("projects")
-        except ValueError as e:
+        except ValueError:
+            projects_index = -1
+
+        try:
+            users_index = path_parts.index("users")
+        except ValueError:
+            users_index = -1
+
+        if projects_index == -1 and users_index == -1:
             raise ValueError(f"The provided URL '{pr_url}' does not appear to be a Bitbucket PR URL")
 
-        path_parts = path_parts[projects_index:]
+        if projects_index != -1:
+            path_parts = path_parts[projects_index:]
+        else:
+            path_parts = path_parts[users_index:]
 
         if len(path_parts) < 6 or path_parts[2] != "repos" or path_parts[4] != "pull-requests":
             raise ValueError(
@@ -355,6 +424,8 @@ class BitbucketServerProvider(GitProvider):
             )
 
         workspace_slug = path_parts[1]
+        if users_index != -1:
+            workspace_slug = f"~{workspace_slug}"
         repo_slug = path_parts[3]
         try:
             pr_number = int(path_parts[5])
@@ -407,3 +478,6 @@ class BitbucketServerProvider(GitProvider):
 
     def _get_pr_comments_path(self):
         return f"rest/api/latest/projects/{self.workspace_slug}/repos/{self.repo_slug}/pull-requests/{self.pr_num}/comments"
+
+    def _get_merge_base(self):
+        return f"rest/api/latest/projects/{self.workspace_slug}/repos/{self.repo_slug}/pull-requests/{self.pr_num}/merge-base"

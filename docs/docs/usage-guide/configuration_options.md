@@ -1,7 +1,7 @@
-The different tools and sub-tools used by CodiumAI PR-Agent are adjustable via the **[configuration file](https://github.com/Codium-ai/pr-agent/blob/main/pr_agent/settings/configuration.toml)**.
+The different tools and sub-tools used by Qodo Merge are adjustable via the **[configuration file](https://github.com/Codium-ai/pr-agent/blob/main/pr_agent/settings/configuration.toml)**.
 
 In addition to general configuration options, each tool has its own configurations. For example, the `review` tool will use parameters from the [pr_reviewer](https://github.com/Codium-ai/pr-agent/blob/main/pr_agent/settings/configuration.toml#L16) section in the configuration file.
-See the [Tools Guide](https://codium-ai.github.io/Docs-PR-Agent/tools/) for a detailed description of the different tools and their configurations.
+See the [Tools Guide](https://qodo-merge-docs.qodo.ai/tools/) for a detailed description of the different tools and their configurations.
 
 There are three ways to set persistent configurations:
 
@@ -18,9 +18,9 @@ In terms of precedence, wiki configurations will override local configurations, 
 
 ## Wiki configuration file 💎
 
-`Platforms supported: GitHub, GitLab`
+`Platforms supported: GitHub, GitLab, Bitbucket`
 
-With PR-Agent-Pro, you can set configurations by creating a page called `.pr_agent.toml` in the [wiki](https://github.com/Codium-ai/pr-agent/wiki/pr_agent.toml) of the repo. 
+With Qodo Merge, you can set configurations by creating a page called `.pr_agent.toml` in the [wiki](https://github.com/Codium-ai/pr-agent/wiki/pr_agent.toml) of the repo.
 The advantage of this method is that it allows to set configurations without needing to commit new content to the repo - just edit the wiki page and **save**.
 
 
@@ -34,7 +34,7 @@ An example content:
 generate_ai_title=true
 ```
 
-PR-Agent will know to remove the surrounding quotes when reading the configuration content.
+Qodo Merge will know to remove the surrounding quotes when reading the configuration content.
 
 ## Local configuration file
 
@@ -69,3 +69,28 @@ For example, in the GitHub organization `Codium-ai`:
 - The file [`https://github.com/Codium-ai/pr-agent-settings/.pr_agent.toml`](https://github.com/Codium-ai/pr-agent-settings/blob/main/.pr_agent.toml)  serves as a global configuration file for all the repos in the GitHub organization `Codium-ai`.
 
 - The repo [`https://github.com/Codium-ai/pr-agent`](https://github.com/Codium-ai/pr-agent/blob/main/.pr_agent.toml) inherits the global configuration file from `pr-agent-settings`.
+
+### Bitbucket Organization level configuration file 💎
+`Relevant platforms: Bitbucket Cloud, Bitbucket Data Center`
+
+In Bitbucket, there are two levels where you can define a global configuration file:
+
+* Project-level global configuration:
+
+Create a repository named `pr-agent-settings` within a specific project. The configuration file in this repository will apply to all repositories under the same project.
+
+* Organization-level global configuration:
+
+Create a dedicated project to hold a global configuration file that affects all repositories across all projects in your organization.
+
+**Setting up organization-level global configuration:**
+
+1.	Create a new project with both the name and key: PR_AGENT_SETTINGS.
+2.	Inside the PR_AGENT_SETTINGS project, create a repository named pr-agent-settings.
+3.	In this repository, add a .pr_agent.toml configuration file—structured similarly to the global configuration file described above.
+
+Repositories across your entire Bitbucket organization will inherit the configuration from this file.
+
+!!! note "Note"
+    If both organization-level and project-level global settings are defined, the project-level settings will take precedence over the organization-level configuration. Additionally, parameters from a repository’s local .pr_agent.toml file will always override both global settings.
+
