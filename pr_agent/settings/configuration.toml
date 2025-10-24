@@ -6,16 +6,18 @@
 
 [config]
 # models
-model="o3-mini"
-fallback_models=["gpt-4o-2024-11-20"]
-#model_weak="gpt-4o-mini-2024-07-18" # optional, a weaker model to use for some easier tasks
+model="o4-mini"
+fallback_models=["gpt-4.1"]
+#model_reasoning="o4-mini" # dedictated reasoning model for self-reflection
+#model_weak="gpt-4o" # optional, a weaker model to use for some easier tasks
 # CLI
 git_provider="github"
 publish_output=true
 publish_output_progress=true
-publish_output_no_suggestions=true
 verbosity_level=0 # 0,1,2
 use_extra_bad_extensions=false
+# Log
+log_level="DEBUG"
 # Configurations
 use_wiki_settings_file=true
 use_repo_settings_file=true
@@ -30,11 +32,12 @@ max_description_tokens = 500
 max_commits_tokens = 500
 max_model_tokens = 32000 # Limits the maximum number of tokens that can be used by any model, regardless of the model's default capabilities.
 custom_model_max_tokens=-1 # for models not in the default list
+model_token_count_estimate_factor=0.3 # factor to increase the token count estimate, in order to reduce likelihood of model failure due to too many tokens - applicable only when requesting an accurate estimate.
 # patch extension logic
 patch_extension_skip_types =[".md",".txt"]
 allow_dynamic_context=true
-max_extra_lines_before_dynamic_context = 8 # will try to include up to 10 extra lines before the hunk in the patch, until we reach an enclosing function or class
-patch_extra_lines_before = 3 # Number of extra lines (+3 default ones) to include before each hunk in the patch
+max_extra_lines_before_dynamic_context = 10 # will try to include up to 10 extra lines before the hunk in the patch, until we reach an enclosing function or class
+patch_extra_lines_before = 5 # Number of extra lines (+3 default ones) to include before each hunk in the patch
 patch_extra_lines_after = 1 # Number of extra lines (+3 default ones) to include after each hunk in the patch
 secret_provider=""
 cli_mode=false
@@ -52,6 +55,7 @@ ignore_pr_target_branches = [] # a list of regular expressions of target branche
 ignore_pr_source_branches = [] # a list of regular expressions of source branches to ignore from PR agent when an PR is created
 ignore_pr_labels = [] # labels to ignore from PR agent when an PR is created
 ignore_pr_authors = [] # authors to ignore from PR agent when an PR is created
+ignore_repositories = [] # a list of regular expressions of repository full names (e.g. "org/repo") to ignore from PR agent processing
 #
 is_auto_command = false # will be auto-set to true if the command is triggered by an automation
 enable_ai_metadata = false # will enable adding ai metadata
@@ -60,6 +64,7 @@ reasoning_effort = "medium" # "low", "medium", "high"
 enable_auto_approval=false # Set to true to enable auto-approval of PRs under certain conditions
 auto_approve_for_low_review_effort=-1 # -1 to disable, [1-5] to set the threshold for auto-approval
 auto_approve_for_no_suggestions=false # If true, the PR will be auto-approved if there are no suggestions
+ensure_ticket_compliance=false # Set to true to disable auto-approval of PRs if the ticket is not compliant
 # extended thinking for Claude reasoning models
 enable_claude_extended_thinking = false # Set to true to enable extended thinking feature
 extended_thinking_budget_tokens = 2048
@@ -77,6 +82,7 @@ require_ticket_analysis_review=true
 # general options
 persistent_comment=true
 extra_instructions = ""
+num_max_findings = 3
 final_update_message = true
 # review labels
 enable_review_labels_security=true
@@ -98,6 +104,7 @@ enable_pr_type=true
 final_update_message = true
 enable_help_text=false
 enable_help_comment=true
+enable_pr_diagram=false # adds a section with a diagram of the PR changes
 # describe as comment
 publish_description_as_comment=false
 publish_description_as_comment_persistent=true
@@ -117,10 +124,11 @@ async_ai_calls=true
 
 [pr_questions] # /ask #
 enable_help_text=false
+use_conversation_history=true
 
 
 [pr_code_suggestions] # /improve #
-max_context_tokens=16000
+max_context_tokens=24000
 #
 commitable_code_suggestions = false
 dual_publishing_score_threshold=-1 # -1 to disable, [0-10] to set the threshold (>=) for publishing a code suggestion both in a table and as commitable
@@ -129,9 +137,9 @@ focus_only_on_problems=true
 extra_instructions = ""
 enable_help_text=false
 enable_chat_text=false
-enable_intro_text=true
 persistent_comment=true
 max_history_len=4
+publish_output_no_suggestions=true
 # enable to apply suggestion 💎
 apply_suggestions_checkbox=true
 # suggestions scoring
@@ -165,7 +173,7 @@ The code suggestions should focus only on the following:
 ...
 """
 suggestions_score_threshold=0
-num_code_suggestions_per_chunk=4
+num_code_suggestions_per_chunk=3
 self_reflect_on_custom_suggestions=true
 enable_help_text=false
 
@@ -180,6 +188,7 @@ class_name = ""        # in case there are several methods with the same name in
 push_changelog_changes=false
 extra_instructions = ""
 add_pr_link=true
+skip_ci_on_push=true
 
 [pr_analyze] # /analyze #
 enable_help_text=true
@@ -211,6 +220,14 @@ force_local_db=false
 num_retrieved_snippets=5
 
 [pr_config] # /config #
+
+[pr_help_docs]
+repo_url = "" #If not overwritten, will use the repo from where the context came from (issue or PR)
+repo_default_branch = "main"
+docs_path = "docs"
+exclude_root_readme = false
+supported_doc_exts = [".md", ".mdx", ".rst"]
+enable_help_text=false
 
 [github]
 # The type of deployment to create. Valid values are 'app' or 'user'.
@@ -262,6 +279,15 @@ handle_push_trigger = false
 push_commands = [
     "/describe",
     "/review",
+]
+
+[gitea_app]
+url = "https://gitea.com"
+handle_push_trigger = false
+pr_commands = [
+    "/describe",
+    "/review",
+    "/improve",
 ]
 
 [bitbucket_app]
