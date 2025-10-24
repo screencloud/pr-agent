@@ -1,6 +1,6 @@
 ## Overview
 
-The `review` tool scans the PR code changes, and generates a list of feedbacks about the PR, aiming to aid the reviewing process.
+The `review` tool scans the PR code changes, and generates feedback about the PR, aiming to aid the reviewing process.
 <br>
 The tool can be triggered automatically every time a new PR is [opened](../usage-guide/automations_and_usage.md#github-app-automatic-tools-when-a-new-pr-is-opened), or can be invoked manually by commenting on any PR:
 
@@ -8,7 +8,7 @@ The tool can be triggered automatically every time a new PR is [opened](../usage
 /review
 ```
 
-Note that the main purpose of the `review` tool is to provide the **PR reviewer** with useful feedbacks and insights. The PR author, in contrast, may prefer to save time and focus on the output of the [improve](./improve.md) tool, which provides actionable code suggestions.
+Note that the main purpose of the `review` tool is to provide the **PR reviewer** with useful feedback and insights. The PR author, in contrast, may prefer to save time and focus on the output of the [improve](./improve.md) tool, which provides actionable code suggestions.
 
 (Read more about the different personas in the PR process and how Qodo Merge aims to assist them in our [blog](https://www.codium.ai/blog/understanding-the-challenges-and-pain-points-of-the-pull-request-cycle/))
 
@@ -51,7 +51,7 @@ extra_instructions = "..."
 
 ## Configuration options
 
-!!! example "General options"
+???+ example "General options"
 
     <table>
       <tr>
@@ -68,7 +68,7 @@ extra_instructions = "..."
       </tr>
       <tr>
         <td><b>enable_help_text</b></td>
-        <td>If set to true, the tool will display a help text in the comment. Default is true.</td>
+        <td>If set to true, the tool will display a help text in the comment. Default is false.</td>
       </tr>
       <tr>
         <td><b>num_max_findings</b></td>
@@ -76,7 +76,7 @@ extra_instructions = "..."
       </tr>
     </table>
 
-!!! example "Enable\\disable specific sub-sections"
+???+ example "Enable\\disable specific sub-sections"
 
     <table>
       <tr>
@@ -92,6 +92,10 @@ extra_instructions = "..."
         <td>If set to true, the tool will add a section that estimates the effort needed to review the PR. Default is true.</td>
       </tr>
       <tr>
+        <td><b>require_estimate_contribution_time_cost</b></td>
+        <td>If set to true, the tool will add a section that estimates the time required for a senior developer to create and submit such changes. Default is false.</td>
+      </tr>
+      <tr>
         <td><b>require_can_be_split_review</b></td>
         <td>If set to true, the tool will add a section that checks if the PR contains several themes, and can be split into smaller PRs. Default is false.</td>
       </tr>
@@ -99,13 +103,18 @@ extra_instructions = "..."
         <td><b>require_security_review</b></td>
         <td>If set to true, the tool will add a section that checks if the PR contains a possible security or vulnerability issue. Default is true.</td>
       </tr>
+        <tr>
+        <td><b>require_todo_scan</b></td>
+        <td>If set to true, the tool will add a section that lists TODO comments found in the PR code changes. Default is false.
+        </td>
+      </tr>
       <tr>
         <td><b>require_ticket_analysis_review</b></td>
         <td>If set to true, and the PR contains a GitHub or Jira ticket link, the tool will add a section that checks if the PR in fact fulfilled the ticket requirements. Default is true.</td>
       </tr>
     </table>
 
-!!! example "Adding PR labels"
+???+ example "Adding PR labels"
 
     You can enable\disable the `review` tool to add specific labels to the PR:
 
@@ -155,7 +164,7 @@ extra_instructions = "..."
     - **`ticket compliance`**: Adds a label indicating code compliance level ("Fully compliant" | "PR Code Verified" | "Partially compliant" | "Not compliant") to any GitHub/Jira/Linea ticket linked in the PR. Controlled by the 'require_ticket_labels' flag (default: false). If 'require_no_ticket_labels' is also enabled, PRs without ticket links will receive a "No ticket found" label.
 
 
-### Blocking PRs from merging based on the generated labels
+### Auto-blocking PRs from being merged based on the generated labels
 
 !!! tip ""
 

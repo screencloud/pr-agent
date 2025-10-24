@@ -329,12 +329,13 @@ async def retry_with_fallback_models(f: Callable, model_type: ModelType = ModelT
             )
             get_settings().set("openai.deployment_id", deployment_id)
             return await f(model)
-        except:
+        except Exception as e:
             get_logger().warning(
-                f"Failed to generate prediction with {model}"
+                f"Failed to generate prediction with {model}",
+                artifact={"error": e},
             )
             if i == len(all_models) - 1:  # If it's the last iteration
-                raise Exception(f"Failed to generate prediction with any model of {all_models}")
+                raise Exception(f"Failed to generate prediction with any model of {all_models}") from e
 
 
 def _get_all_models(model_type: ModelType = ModelType.REGULAR) -> List[str]:
@@ -398,11 +399,6 @@ def get_pr_multi_diffs(git_provider: GitProvider,
     # Sort files by main language
     pr_languages = sort_files_by_main_languages(git_provider.get_languages(), diff_files)
 
-    # Sort files within each language group by tokens in descending order
-    sorted_files = []
-    for lang in pr_languages:
-        sorted_files.extend(sorted(lang['files'], key=lambda x: x.tokens, reverse=True))
-
     # Get the maximum number of extra lines before and after the patch
     PATCH_EXTRA_LINES_BEFORE = get_settings().config.patch_extra_lines_before
     PATCH_EXTRA_LINES_AFTER = get_settings().config.patch_extra_lines_after
@@ -419,6 +415,11 @@ def get_pr_multi_diffs(git_provider: GitProvider,
     # if we are under the limit, return the full diff
     if total_tokens + OUTPUT_BUFFER_TOKENS_SOFT_THRESHOLD < get_max_tokens(model):
         return ["\n".join(patches_extended)] if patches_extended else []
+
+    # Sort files within each language group by tokens in descending order
+    sorted_files = []
+    for lang in pr_languages:
+        sorted_files.extend(sorted(lang['files'], key=lambda x: x.tokens, reverse=True))
 
     patches = []
     final_diff_list = []

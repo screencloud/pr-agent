@@ -1,19 +1,23 @@
 ## Azure DevOps Pipeline
 
-You can use a pre-built Action Docker image to run PR-Agent as an Azure devops pipeline.
-add the following file to your repository under `azure-pipelines.yml`:
+You can use a pre-built Action Docker image to run PR-Agent as an Azure DevOps pipeline.
+Add the following file to your repository under `azure-pipelines.yml`:
 
 ```yaml
 # Opt out of CI triggers
 trigger: none
 
 # Configure PR trigger
-pr:
-  branches:
-    include:
-    - '*'
-  autoCancel: true
-  drafts: false
+# pr:
+#   branches:
+#     include:
+#     - '*'
+#   autoCancel: true
+#   drafts: false
+
+# NOTE for Azure Repos Git:
+# Azure Repos does not honor YAML pr: triggers. Configure Build Validation
+# via Branch Policies instead (see note below). You can safely omit pr:.
 
 stages:
 - stage: pr_agent
@@ -61,6 +65,19 @@ Make sure to give pipeline permissions to the `pr_agent` variable group.
 
 > Note that Azure Pipelines lacks support for triggering workflows from PR comments. If you find a viable solution, please contribute it to our [issue tracker](https://github.com/Codium-ai/pr-agent/issues)
 
+### Azure Repos Git PR triggers and Build Validation
+
+Azure Repos Git does not use YAML `pr:` triggers for pipelines. Instead, configure Build Validation on the target branch to run the PR Agent pipeline for pull requests:
+
+1. Go to Project Settings → Repositories → Branches.
+2. Select the target branch and open Branch Policies.
+3. Under Build Validation, add a policy:
+   - Select the PR Agent pipeline (the `azure-pipelines.yml` above).
+   - Set it as Required.
+4. Remove the `pr:` section from your YAML (not needed for Azure Repos Git).
+
+This distinction applies specifically to Azure Repos Git. Other providers like GitHub and Bitbucket Cloud can use YAML-based PR triggers.
+
 ## Azure DevOps from CLI
 
 To use Azure DevOps provider use the following settings in configuration.toml:
@@ -71,7 +88,7 @@ git_provider="azure"
 ```
 
 Azure DevOps provider supports [PAT token](https://learn.microsoft.com/en-us/azure/devops/organizations/accounts/use-personal-access-tokens-to-authenticate?view=azure-devops&tabs=Windows) or [DefaultAzureCredential](https://learn.microsoft.com/en-us/azure/developer/python/sdk/authentication-overview#authentication-in-server-environments) authentication.
-PAT is faster to create, but has build in expiration date, and will use the user identity for API calls.
+PAT is faster to create, but has built-in expiration date, and will use the user identity for API calls.
 Using DefaultAzureCredential you can use managed identity or Service principle, which are more secure and will create separate ADO user identity (via AAD) to the agent.
 
 If PAT was chosen, you can assign the value in .secrets.toml.

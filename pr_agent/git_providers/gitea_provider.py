@@ -41,6 +41,12 @@ class GiteaProvider(GitProvider):
         configuration.host = "{}/api/v1".format(self.base_url)
         configuration.api_key['Authorization'] = f'token {gitea_access_token}'
 
+        if get_settings().get("GITEA.SKIP_SSL_VERIFICATION", False):
+            configuration.verify_ssl = False
+
+        # Use custom cert (self-signed)
+        configuration.ssl_ca_cert = get_settings().get("GITEA.SSL_CA_CERT", None)
+
         client = giteapy.ApiClient(configuration)
         self.repo_api = RepoApi(client)
         self.owner = None
@@ -409,7 +415,7 @@ class GiteaProvider(GitProvider):
     def _get_file_content_from_base(self, filename: str) -> str:
         return self.repo_api.get_file_content(
             owner=self.owner,
-            repo=self.base_ref,
+            repo=self.repo,
             commit_sha=self.base_sha,
             filepath=filename
         )
@@ -417,7 +423,7 @@ class GiteaProvider(GitProvider):
     def _get_file_content_from_latest_commit(self, filename: str) -> str:
         return self.repo_api.get_file_content(
             owner=self.owner,
-            repo=self.base_ref,
+            repo=self.repo,
             commit_sha=self.last_commit.sha,
             filepath=filename
         )
@@ -471,11 +477,11 @@ class GiteaProvider(GitProvider):
 
             if status == 'added':
                 edit_type = EDIT_TYPE.ADDED
-            elif status == 'removed':
+            elif status == 'removed' or status == 'deleted':
                 edit_type = EDIT_TYPE.DELETED
             elif status == 'renamed':
                 edit_type = EDIT_TYPE.RENAMED
-            elif status == 'modified':
+            elif status == 'modified' or status == 'changed':
                 edit_type = EDIT_TYPE.MODIFIED
             else:
                 self.logger.error(f"Unknown edit type: {status}")

@@ -39,14 +39,6 @@ class PRCodeSuggestions:
             self.git_provider.get_languages(), self.git_provider.get_files()
         )
 
-        # limit context specifically for the improve command, which has hard input to parse:
-        if get_settings().pr_code_suggestions.max_context_tokens:
-            MAX_CONTEXT_TOKENS_IMPROVE = get_settings().pr_code_suggestions.max_context_tokens
-            if get_settings().config.max_model_tokens > MAX_CONTEXT_TOKENS_IMPROVE:
-                get_logger().info(f"Setting max_model_tokens to {MAX_CONTEXT_TOKENS_IMPROVE} for PR improve")
-                get_settings().config.max_model_tokens_original = get_settings().config.max_model_tokens
-                get_settings().config.max_model_tokens = MAX_CONTEXT_TOKENS_IMPROVE
-
         num_code_suggestions = int(get_settings().pr_code_suggestions.num_code_suggestions_per_chunk)
 
         self.ai_handler = ai_handler()
@@ -614,11 +606,13 @@ class PRCodeSuggestions:
                     break
             if original_initial_line:
                 suggested_initial_line = new_code_snippet.splitlines()[0]
-                original_initial_spaces = len(original_initial_line) - len(original_initial_line.lstrip())
+                original_initial_spaces = len(original_initial_line) - len(original_initial_line.lstrip()) # lstrip works both for spaces and tabs
                 suggested_initial_spaces = len(suggested_initial_line) - len(suggested_initial_line.lstrip())
                 delta_spaces = original_initial_spaces - suggested_initial_spaces
                 if delta_spaces > 0:
-                    new_code_snippet = textwrap.indent(new_code_snippet, delta_spaces * " ").rstrip('\n')
+                    # Detect indentation character from original line
+                    indent_char = '\t' if original_initial_line.startswith('\t') else ' '
+                    new_code_snippet = textwrap.indent(new_code_snippet, delta_spaces * indent_char).rstrip('\n')
         except Exception as e:
             get_logger().error(f"Error when dedenting code snippet for file {relevant_file}, error: {e}")
 
@@ -942,6 +936,7 @@ class PRCodeSuggestions:
             with get_logger().contextualize(command="self_reflect_on_suggestions"):
                 response_reflect, finish_reason_reflect = await self.ai_handler.chat_completion(model=model,
                                                                                                 system=system_prompt_reflect,
+                                                                                                temperature=get_settings().config.temperature,
                                                                                                 user=user_prompt_reflect)
         except Exception as e:
             get_logger().info(f"Could not reflect on suggestions, error: {e}")
