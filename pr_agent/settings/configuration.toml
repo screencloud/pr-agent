@@ -139,7 +139,29 @@ commitable_code_suggestions = false
 dual_publishing_score_threshold=-1 # -1 to disable, [0-10] to set the threshold (>=) for publishing a code suggestion both in a table and as commitable
 focus_only_on_problems=true
 #
-extra_instructions = ""
+extra_instructions = """\
+- Always apply clean code principles in suggestions:
+  - Meaningful variable/function names
+  - Single responsibility principle
+  - Consistent formatting and style
+- Follow DRY (Don't Repeat Yourself) principle:
+  - Extract duplicated code into reusable functions
+  - Identify and consolidate similar logic
+- Identify and fix potential bugs:
+  - Edge cases handling
+  - Input validation
+  - Error handling
+  - Resource cleanup
+- Improve code readability:
+  - Add clear comments for medium to complex logic
+  - Break down long functions
+  - Use descriptive variable names
+  - Proper code organization
+- Maintain existing core logic:
+  - Keep business logic unchanged
+  - Focus on implementation improvements
+  - Preserve existing functionality
+"""
 enable_help_text=false
 enable_chat_text=false
 persistent_comment=true
