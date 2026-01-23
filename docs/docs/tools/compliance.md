@@ -330,6 +330,10 @@ enable_global_pr_compliance = true
 
     <table>
       <tr>
+        <td><b>require_ticket_analysis_review</b></td>
+        <td>If set to true, the tool will fetch and analyze ticket context for compliance validation. Default is true.</td>
+      </tr>
+      <tr>
         <td><b>enable_ticket_labels</b></td>
         <td>If set to true, the tool will add ticket compliance labels to the PR. Default is false.</td>
       </tr>
@@ -340,6 +344,19 @@ enable_global_pr_compliance = true
       <tr>
         <td><b>check_pr_additional_content</b></td>
         <td>If set to true, the tool will check if the PR contains content not related to the ticket. Default is false.</td>
+      </tr>
+    </table>
+
+???+ example "Generic custom compliance checklist options"
+
+    <table>
+      <tr>
+        <td><b>enable_generic_custom_compliance_checklist</b></td>
+        <td>If set to true, the tool will apply generic custom compliance checklist rules. Default is true.</td>
+      </tr>
+      <tr>
+        <td><b>persist_generic_custom_compliance_checklist</b></td>
+        <td>If set to false, generic compliance checklist will not be kept with custom compliance. Default is false.</td>
       </tr>
     </table>
 
