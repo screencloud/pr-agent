@@ -1,3 +1,14 @@
+[config]
+# Full context for PR review
+add_repo_metadata = true
+add_repo_metadata_file_list = ["AGENTS.MD", "AGENTS.md", "CLAUDE.MD", "QODO.MD", "CONTRIBUTING.md", "README.md"]
+allow_dynamic_context = true
+max_extra_lines_before_dynamic_context = 15
+patch_extra_lines_before = 15
+patch_extra_lines_after = 10
+large_patch_policy = "clip"
+max_model_tokens = 128000
+
 [pr_reviewer]
 enable_review_labels_effort = true
 enable_auto_approval = true
